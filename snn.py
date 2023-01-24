@@ -7,8 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tonic
 import norse
+import sdl2.ext
 
-# %% Import classes
 from metavision_core.event_io import EventsIterator
 from metavision_core.event_io.raw_reader import RawReader
 
@@ -18,8 +18,8 @@ raw_path = "./data/1hzplane.raw"
 # Creates an iterator. Faster
 event_iterator = EventsIterator(
     raw_path,
-    delta_t=1,
-    max_duration=int(1e2),
+    delta_t=10,
+    max_duration=int(1e6),
 )
 print(event_iterator)
 print("Imager size : ", event_iterator.get_size())
@@ -28,6 +28,8 @@ print("Imager size : ", event_iterator.get_size())
 record_raw = RawReader(raw_path)
 print("\n" + str(record_raw))
 print("Imager size : ", record_raw.get_size())
+
+# %% Convert to sparse tensor
 
 
 # %%
@@ -66,12 +68,20 @@ plt.imshow(im)
 plt.tight_layout()
 
 # %%
-kernel_size = 5
-kernel = torch.zeros(5, 5)
-kernel[2, :] = torch.ones(5)
-plt.matshow(kernel)
-convolution = torch.nn.Conv2d(1, 1, kernel_size)
-convolution.weight = torch.nn.Parameter(kernel)
+kernel_size = 9
+kernel = torch.zeros(kernel_size, kernel_size)
+kernel[:, int((kernel_size - 1) / 2)] = torch.ones(kernel_size)
+plt.matshow(kernel.T)
+kernels = torch.stack((kernel, kernel.T))
+convolution = torch.nn.Conv2d(
+    1,
+    2,
+    kernel_size,
+    padding=4,
+    bias=False,
+    dilation=1,
+)
+convolution.weight = torch.nn.Parameter(kernels.unsqueeze(1))
 
 # %%
 # Create Norse network
@@ -84,16 +94,51 @@ net = norse.torch.SequentialState(
 state = None  # Start with empty state
 
 # %%
-import sdl2dll
-from sdl2 import create_sdl_surface, events_to_bw
+WHITE = 256 << 16 | 256 << 8 | 256
 
-window, pixels = create_sdl_surface(640 * 2, 480)
+
+def create_sdl_surface(*shape):
+    sdl2.ext.init()
+    window = sdl2.ext.Window("AEStream window", shape)
+    window.show()
+    # window = sdl2.SDL_CreateWindow("AEStream window", 100, 100, *shape, 0)
+
+    factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
+    renderer = factory.create_sprite_render_system(window)
+    pixels = sdl2.ext.pixelaccess.pixels2d(renderer)
+
+    return window, pixels
+
+
+def events_to_bw(events):
+    return events.int() * (255 << 16)
+
+
+window, pixels = create_sdl_surface(640 * 3, 480)
+
 
 # %%
-for tensor in event_iterator:
-    print(tensor)
-    with torch.inference_mode():
-        filtered, state = net(tensor.view(1, 1, 640, 480), state)
+def event_array_to_tensor(event_array, size=(640, 480)):
+    tensor = torch.zeros(size)
+    for event in event_array:
+        tensor[event[0], event[1]] = 1
+    return tensor
+
+
+# %%
+try:
+    for event_array in event_iterator:
+        print(event_array)
+        tensor = event_array_to_tensor(event_array)
+        with torch.inference_mode():
+            filtered, state = net(tensor.view(1, 1, 640, 480), state)
+            print(filtered.size())
+        pixels[0:640] = events_to_bw(tensor)
+        pixels[640:640 * 2] = events_to_bw(filtered[0, 0])
+        pixels[640 * 2:640 * 3] = events_to_bw(filtered[0, 1])
+        window.refresh()
+finally:
+    window.close()
 
 # %%
 # from norse.torch import LIFParameters, LIFState
