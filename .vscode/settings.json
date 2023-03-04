@@ -1,0 +1,10 @@
+{
+    "python.formatting.provider": "autopep8",
+    "cSpell.words": [
+        "hzplane",
+        "matplotlib",
+        "metavision",
+        "pyplot",
+        "torchvision"
+    ]
+}

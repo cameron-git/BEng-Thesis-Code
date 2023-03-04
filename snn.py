@@ -13,66 +13,57 @@ from metavision_core.event_io import EventsIterator
 from metavision_core.event_io.raw_reader import RawReader
 
 # %% Import data
-raw_path = "./data/1hzplane.raw"
+raw_path = "./data/1hzplane_td.dat"
 
 # Creates an iterator. Faster
 event_iterator = EventsIterator(
     raw_path,
-    delta_t=10,
-    max_duration=int(1e6),
+    delta_t=361,
 )
 print(event_iterator)
 print("Imager size : ", event_iterator.get_size())
 
-# Creates a buffer and then can be loaded as numpy
-record_raw = RawReader(raw_path)
-print("\n" + str(record_raw))
-print("Imager size : ", record_raw.get_size())
-
-# %% Convert to sparse tensor
-
-
-# %%
-def ev_rate_computation_iterator():
-    # we preallocate an array for the result
-    ev_rate_millisecond = np.zeros(int(1e6) // 1000)
-    for ev in EventsIterator(raw_path, delta_t=10000, max_duration=int(1e6)):
-        # np.unique allow to do an histogram quickly
-        index, counts = np.unique(ev['t'] // 1000, return_counts=True)
-        # for each timestamp (in millisecond) in index, we get the number of events in counts
-        ev_rate_millisecond[index.astype(int)] = counts
-    return ev_rate_millisecond
+# # %%
+# def ev_rate_computation_iterator():
+#     # we preallocate an array for the result
+#     ev_rate_millisecond = np.zeros(int(1e6) // 1000)
+#     for ev in event_iterator:
+#         # np.unique allow to do an histogram quickly
+#         index, counts = np.unique(ev['t'] // 1000, return_counts=True)
+#         # for each timestamp (in millisecond) in index, we get the number of events in counts
+#         ev_rate_millisecond[index.astype(int)] = counts
+#     return ev_rate_millisecond
 
 
-ev_rate_millisecond = ev_rate_computation_iterator()
+# ev_rate_millisecond = ev_rate_computation_iterator()
 
-plt.plot(np.arange(int(1e6) // 1000) * 1000, ev_rate_millisecond)
-plt.title('Number of events by milliseconds as a function of time in us')
-plt.show()
-
-
-# %%
-def viz_events(events, height, width):
-    img = np.full((height, width, 3), 128, dtype=np.uint8)
-    img[events['y'], events['x']] = 255 * events['p'][:, None]
-    return img
+# plt.plot(np.arange(int(1e6) // 1000) * 1000, ev_rate_millisecond)
+# plt.title('Number of events by milliseconds as a function of time in us')
+# plt.show()
 
 
-height, width = record_raw.get_size()
+# # %%
+# def viz_events(events, height, width):
+#     img = np.full((height, width, 3), 128, dtype=np.uint8)
+#     img[events['y'], events['x']] = 255 * events['p'][:, None]
+#     return img
 
-# load the next 50 ms worth of events
-events = record_raw.load_delta_t(50000)
-im = viz_events(events, height, width)
 
-plt.imshow(im)
-plt.tight_layout()
+# height, width = record_raw.get_size()
+
+# # load the next 50 ms worth of events
+# events = record_raw.load_delta_t(50000)
+# im = viz_events(events, height, width)
+
+# plt.imshow(im)
+# plt.tight_layout()
 
 # %%
 kernel_size = 9
 kernel = torch.zeros(kernel_size, kernel_size)
-kernel[:, int((kernel_size - 1) / 2)] = torch.ones(kernel_size)
+kernel[:, int((kernel_size - 1) / 2)] = 1
 plt.matshow(kernel.T)
-kernels = torch.stack((kernel, kernel.T))
+kernels = torch.stack((kernel, kernel.flip(0)))
 convolution = torch.nn.Conv2d(
     1,
     2,
@@ -88,7 +79,7 @@ convolution.weight = torch.nn.Parameter(kernels.unsqueeze(1))
 # - One refractory cell to inhibit pixels
 # - One convolutional edge-detection layer
 net = norse.torch.SequentialState(
-    norse.torch.LIFRefracCell(),
+    norse.torch.LICell(p=norse.torch.LIParameters(tau_mem_inv=1/0.5)),
     convolution,
 )
 state = None  # Start with empty state
