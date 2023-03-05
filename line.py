@@ -11,7 +11,7 @@ from metavision_core.event_io import EventsIterator, load_events
 
 # %% Dataset
 
-file_path = "../data/1hzplane_td.dat"
+file_path = "/data/1hzplane_td.dat"
 
 
 # data_iterator = EventsIterator(
