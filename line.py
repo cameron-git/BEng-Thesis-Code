@@ -1,18 +1,22 @@
 # %% Imports
-%matplotlib ipympl
-import torch
-import torchvision
-import numpy as np
-import matplotlib.pyplot as plt
-import tonic
-import norse
-import sdl2.ext
+# %matplotlib ipympl
+%matplotlib tk
 from metavision_core.event_io import EventsIterator, load_events
+
+import tonic
+import matplotlib.pyplot as plt
+import numpy as np
+import torchvision
+import torch.nn as nn
+import torch
+# import sdl2.ext
 
 # %% Dataset
 
-file_path = "/data/1hzplane_td.dat"
+file_name = "1hzplane"
 
+file = load_events("./data/Line/" + file_name + ".dat")
+# file = np.load("./data/Line/" + file_name + ".npy")
 
 # data_iterator = EventsIterator(
 #     file_path,
@@ -24,39 +28,29 @@ file_path = "/data/1hzplane_td.dat"
 
 # %% Model
 
-kernel_size = 9
-kernel = torch.zeros(kernel_size, kernel_size)
-kernel[:, int((kernel_size - 1) / 2)] = 1
-plt.matshow(kernel.T)
-kernels = torch.stack((kernel, kernel.flip(0)))
-convolution = torch.nn.Conv2d(
-    1,
-    2,
-    kernel_size,
-    padding=4,
-    bias=False,
-    dilation=1,
-)
-convolution.weight = torch.nn.Parameter(kernels.unsqueeze(1))
+import models
 
-net = norse.torch.SequentialState(
-    norse.torch.LICell(p=norse.torch.LIParameters(tau_mem_inv=1/0.5)),
-    convolution,
-)
-state = None  # Start with empty state
+net = models.SNN2()
 
 # %% Training
 
 # %% Inference
 
-transform = tonic.transforms.ToFrame(
-    sensor_size=[480,360,1],
-    time_window=361,
-)
+in_frames = np.load("./data/Line/"+file_name+"_frames.npy")
+in_frames = torch.from_numpy(in_frames)
 
-frames = transform(np.load("../data/Line/1hzplane_td.npy"))
+# %%
 
 
-animation = tonic.utils.plot_animation(frames=frames)
+# %%
+with torch.inference_mode():
+    out_frames = net(in_frames)
+
+
+# np.save("./data/Line/" + file_name + "_out.npy")
+
+# %% Visualise
+
+animation = tonic.utils.plot_animation(frames=out_frames)
 
 # %%
