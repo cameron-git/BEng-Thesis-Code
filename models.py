@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 kernel_size = 9
-kernel = torch.zeros(kernel_size, kernel_size)
+kernel = torch.zeros(kernel_size, kernel_size,).cuda(0)
 kernel[int((kernel_size - 1) / 2), :] = 1
 # plt.matshow(kernel.T)
 convolution = torch.nn.Conv2d(
@@ -17,6 +17,7 @@ convolution = torch.nn.Conv2d(
 )
 convolution.weight = torch.nn.Parameter(kernel.unsqueeze(0).unsqueeze(0))
 
+
 class SNN1(torch.nn.Module):
     def __init__(self):
         """
@@ -24,7 +25,13 @@ class SNN1(torch.nn.Module):
         """
         super(SNN1, self).__init__()
         self.dt = 361e-6
-        self.l1 = snn.LICell(p=snn.LIParameters(tau_mem_inv=1/0.002))
+        self.l1 = snn.LICell(
+            p=snn.LIParameters(
+                tau_mem_inv=1/0.001,
+                tau_syn_inv=1/0.001,
+                # v_leak=0,
+            )
+        )
 
     def forward(self, x):
         seq_length, _, _, _ = x.shape
@@ -59,7 +66,7 @@ class SNN2(torch.nn.Module):
             z = x[ts, :, :, :]  # .view(-1, self.input_features)
             z, s1 = self.l1(z, s1)
             z = convolution(z)
-            z, s2 = self.l1(z, s2)
+            # z, s2 = self.l1(z, s2)
             outputs += [z]
 
         return torch.stack(outputs)
