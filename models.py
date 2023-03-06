@@ -4,7 +4,9 @@ import torch
 import numpy as np
 
 kernel_size = 9
-kernel = torch.zeros(kernel_size, kernel_size,).cuda(0)
+kernel = torch.zeros(kernel_size, kernel_size,)
+if torch.cuda.is_available():
+    kernal = kernel.cuda(0)
 kernel[int((kernel_size - 1) / 2), :] = 1
 # plt.matshow(kernel.T)
 convolution = torch.nn.Conv2d(
@@ -18,7 +20,7 @@ convolution = torch.nn.Conv2d(
 convolution.weight = torch.nn.Parameter(kernel.unsqueeze(0).unsqueeze(0))
 
 
-class SNN1(torch.nn.Module):
+class Line1(torch.nn.Module):
     def __init__(self):
         """
         - LI 0.002
@@ -46,7 +48,7 @@ class SNN1(torch.nn.Module):
         return torch.stack(outputs)
 
 
-class SNN2(torch.nn.Module):
+class Line1(torch.nn.Module):
     def __init__(self):
         """
         - LIF 0.001
