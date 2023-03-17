@@ -321,7 +321,7 @@ class Fast3(torch.nn.Module):
         """
         super(Fast3, self).__init__()
         self.l1 = FastLIFCell(0.9, 2)
-        self.l2 = FastLIFCell(0.9,1)
+        self.l2 = FastLIFCell(0.95,1)
 
         kernel = torch.tensor([[0,      0,      0,      0,      0],
                                [0,      0,      0,      0,      0],
