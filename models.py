@@ -2,6 +2,7 @@ import norse.torch as snn
 import torch.nn as nn
 import torch
 import numpy as np
+import tonic
 
 
 class Line1(torch.nn.Module):
@@ -78,14 +79,15 @@ class Line2(torch.nn.Module):
 class Blur1(torch.nn.Module):
     def __init__(self):
         """
-        - LIF 0.001
-        - LI 0.002
+        0       0.15    0
+        0.15    0.4     0.15
+        0       0.15    0
         """
         super(Blur1, self).__init__()
         self.l1 = snn.LIFCell(p=snn.LIFParameters(
-            tau_syn_inv=100, tau_mem_inv=400))
-        self.l2 = snn.LICell(p=snn.LIFParameters(
-            tau_syn_inv=800, tau_mem_inv=200))
+            tau_syn_inv=200, tau_mem_inv=200))
+        self.l2 = snn.LICell(p=snn.LIParameters(
+            tau_syn_inv=400, tau_mem_inv=200))
 
         kernel = torch.tensor([[0,      0.15,   0],
                                [0.15,   0.4,    0.15],
@@ -105,9 +107,77 @@ class Blur1(torch.nn.Module):
         for ts in range(seq_length):
             z = x[ts, :, :, :]
             z = self.convolution(z)
-            # z = self.convolution(z)
             z, s1 = self.l1(z, s1)
             # z, s2 = self.l2(z, s2)
             outputs += [z]
 
         return torch.stack(outputs)
+
+
+class Blur2(torch.nn.Module):
+    def __init__(self):
+        """
+        1/9 1/9 1/9
+        1/9 1/9 1/9
+        1/9 1/9 1/9
+        """
+        super(Blur2, self).__init__()
+        self.l1 = snn.LIFCell(p=snn.LIFParameters(
+            tau_syn_inv=400, tau_mem_inv=200))
+        self.l2 = snn.LICell(p=snn.LIParameters(
+            tau_syn_inv=400, tau_mem_inv=200))
+
+        kernel = torch.full((3,3),1/9)
+        # if torch.cuda.is_available():
+        #     kernal = kernel.cuda(0)
+        convolution = torch.nn.Conv2d(1, 1, 3, padding=1, bias=False)
+        convolution.weight = torch.nn.Parameter(
+            kernel.unsqueeze(0).unsqueeze(0))
+        self.convolution = convolution
+
+    def forward(self, x):
+        seq_length, _, _, _ = x.shape
+        s1 = s2 = None
+        outputs = []
+
+        for ts in range(seq_length):
+            z = x[ts, :, :, :]
+            z = self.convolution(z)
+            z, s1 = self.l1(z, s1)
+            # z, s2 = self.l2(z, s2)
+            outputs += [z]
+
+        return torch.stack(outputs)
+
+class Denoise1(torch.nn.Module):
+    def __init__(self):
+        """
+        """
+        super(Denoise1, self).__init__()
+        self.l1 = snn.LIFCell(p=snn.LIFParameters(
+            tau_syn_inv=400, tau_mem_inv=200))
+        self.l2 = snn.LICell(p=snn.LIParameters(
+            tau_syn_inv=400, tau_mem_inv=200))
+
+    def forward(self, x):
+        seq_length, _, _, _ = x.shape
+        s1 = s2 = None
+        outputs = []
+
+        for ts in range(seq_length):
+            z = x[ts, :, :, :]
+            z, s1 = self.l1(z, s1)
+            z, s2 = self.l1(z, s2)
+            outputs += [z]
+
+        return torch.stack(outputs)
+
+class Denoise2(torch.nn.Module):
+    def __init__(self, t):
+        """
+        """
+        super(Denoise2, self).__init__()
+        self.denoise = tonic.transforms.Denoise(t)
+
+    def forward(self, x):
+        return self.denoise(x)
