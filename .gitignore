@@ -5,3 +5,4 @@ data
 *.npy
 *.raw
 *.h5
+__pycache__
