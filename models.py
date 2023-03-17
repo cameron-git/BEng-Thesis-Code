@@ -127,7 +127,7 @@ class Blur2(torch.nn.Module):
         self.l2 = snn.LICell(p=snn.LIParameters(
             tau_syn_inv=400, tau_mem_inv=200))
 
-        kernel = torch.full((3,3),1/9)
+        kernel = torch.full((3, 3), 1/9)
         # if torch.cuda.is_available():
         #     kernal = kernel.cuda(0)
         convolution = torch.nn.Conv2d(1, 1, 3, padding=1, bias=False)
@@ -148,6 +148,43 @@ class Blur2(torch.nn.Module):
             outputs += [z]
 
         return torch.stack(outputs)
+
+
+class Blur3(torch.nn.Module):
+    def __init__(self):
+        """
+        1/9 1/9 1/9
+        1/9 1/9 1/9
+        1/9 1/9 1/9
+        """
+        super(Blur2, self).__init__()
+        self.l1 = snn.LIFCell(p=snn.LIFParameters(
+            tau_syn_inv=400, tau_mem_inv=200))
+        self.l2 = snn.LICell(p=snn.LIParameters(
+            tau_syn_inv=400, tau_mem_inv=200))
+
+        kernel = torch.full((3, 3), 1/9)
+        # if torch.cuda.is_available():
+        #     kernal = kernel.cuda(0)
+        convolution = torch.nn.Conv2d(1, 1, 3, padding=1, bias=False)
+        convolution.weight = torch.nn.Parameter(
+            kernel.unsqueeze(0).unsqueeze(0))
+        self.convolution = convolution
+
+    def forward(self, x):
+        seq_length, _, _, _ = x.shape
+        s1 = s2 = None
+        outputs = []
+
+        for ts in range(seq_length):
+            z = x[ts, :, :, :]
+            z = self.convolution(z)
+            z, s1 = self.l1(z, s1)
+            # z, s2 = self.l2(z, s2)
+            outputs += [z]
+
+        return torch.stack(outputs)
+
 
 class Denoise1(torch.nn.Module):
     def __init__(self):
@@ -172,6 +209,7 @@ class Denoise1(torch.nn.Module):
 
         return torch.stack(outputs)
 
+
 class Denoise2(torch.nn.Module):
     def __init__(self, t):
         """
@@ -181,13 +219,14 @@ class Denoise2(torch.nn.Module):
 
     def forward(self, x):
         return self.denoise(x)
-    
+
+
 @torch.jit.script
 def _fast_lif_step_jit(input_tensor, state, decay_rate, threshold):
     state *= decay_rate
     state += input_tensor
     spikes = torch.gt(state, threshold).to(state.dtype)
-    state -= spikes
+    # state -= spikes
     return spikes, state
 
 
@@ -201,19 +240,32 @@ class FastLIFCell(torch.nn.Module):
         return _fast_lif_step_jit(input_tensor, state, self.decay_rate, self.threshold)
 
 
+@torch.jit.script
+def _fast_li_step_jit(input_tensor, state, decay_rate):
+    state *= decay_rate
+    state += input_tensor
+    return state, state.clone()
+
+
+class FastLICell(torch.nn.Module):
+    def __init__(self, decay_rate) -> None:
+        super().__init__()
+        self.decay_rate = torch.tensor(decay_rate)
+
+    def forward(self, input_tensor, state):
+        return _fast_li_step_jit(input_tensor, state, self.decay_rate)
+
+
 class Fast1(torch.nn.Module):
     def __init__(self):
         """
         """
         super(Fast1, self).__init__()
-        self.l1 = FastLIFCell(0.5, 2)
+        self.l1 = FastLIFCell(0.9, 2)
 
         kernel = torch.tensor([[0,      0.15,   0],
                                [0.15,   0.4,    0.15],
                                [0,      0.15,   0]])
-        # Google how to put whole model on CUDA
-        # if torch.cuda.is_available():
-        #     kernel = kernel.cuda(0)
         convolution = torch.nn.Conv2d(1, 1, 3, padding=1, bias=False)
         convolution.weight = torch.nn.Parameter(
             kernel.unsqueeze(0).unsqueeze(0))
@@ -221,13 +273,77 @@ class Fast1(torch.nn.Module):
 
     def forward(self, x):
         seq_length, _, _, _ = x.shape
-        s1 = torch.zeros(x.shape[1:], device=x.device,dtype=torch.float32)
+        s1 = torch.zeros(x.shape[1:], device=x.device, dtype=torch.float32)
         outputs = []
 
         for ts in range(seq_length):
             z = x[ts, :, :, :]
             z = self.convolution(z)
             z, s1 = self.l1(z, s1)
+            outputs += [z]
+
+        return torch.stack(outputs)
+
+
+class Fast2(torch.nn.Module):
+    def __init__(self):
+        """
+        """
+        super(Fast2, self).__init__()
+        self.l1 = FastLIFCell(0.9, 2)
+
+        kernel = torch.tensor([[0,      0,      0,      0,      0],
+                               [0,      0,      0,      0,      0],
+                               [1/5,    1/5,    1/5,    1/5,    1/5],
+                               [0,      0,      0,      0,      0],
+                               [0,      0,      0,      0,      0]])
+        convolution = torch.nn.Conv2d(1, 1, 5, padding=2, bias=False)
+        convolution.weight = torch.nn.Parameter(
+            kernel.unsqueeze(0).unsqueeze(0))
+        self.convolution = convolution
+
+    def forward(self, x):
+        seq_length, _, _, _ = x.shape
+        s1 = torch.zeros(x.shape[1:], device=x.device, dtype=torch.float32)
+        outputs = []
+
+        for ts in range(seq_length):
+            z = x[ts, :, :, :]
+            z = self.convolution(z)
+            z, s1 = self.l1(z, s1)
+            outputs += [z]
+
+        return torch.stack(outputs)
+
+class Fast3(torch.nn.Module):
+    def __init__(self):
+        """
+        """
+        super(Fast3, self).__init__()
+        self.l1 = FastLIFCell(0.9, 2)
+        self.l2 = FastLIFCell(0.9,1)
+
+        kernel = torch.tensor([[0,      0,      0,      0,      0],
+                               [0,      0,      0,      0,      0],
+                               [1/5,    1/5,    1/5,    1/5,    1/5],
+                               [0,      0,      0,      0,      0],
+                               [0,      0,      0,      0,      0]])
+        convolution = torch.nn.Conv2d(1, 1, 5, padding=2, bias=False)
+        convolution.weight = torch.nn.Parameter(
+            kernel.unsqueeze(0).unsqueeze(0))
+        self.convolution = convolution
+
+    def forward(self, x):
+        seq_length, _, _, _ = x.shape
+        s1 = torch.zeros(x.shape[1:], device=x.device, dtype=torch.float32)
+        s2 = torch.zeros(x.shape[1:], device=x.device, dtype=torch.float32)
+        outputs = []
+
+        for ts in range(seq_length):
+            z = x[ts, :, :, :]
+            z = self.convolution(z)
+            z, s1 = self.l1(z, s1)
+            z, s2 = self.l2(z, s2)
             outputs += [z]
 
         return torch.stack(outputs)
