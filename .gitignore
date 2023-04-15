@@ -6,3 +6,5 @@ data
 *.raw
 *.h5
 __pycache__
+*.png
+*.gif
